@@ -253,11 +253,15 @@ async def get_chat_engine(
         use_async=True,
     )
 
-    api_query_engine_tools = [
-        get_api_query_engine_tool(doc, callback_manager)
-        for doc in conversation.documents
-        if DocumentMetadataKeysEnum.SEC_DOCUMENT in doc.metadata_map
-    ]
+    doc_id_map = {str(doc.id): doc for doc in conversation.documents}
+
+    # Create API query engine tools with consistent naming
+    api_query_engine_tools = []
+    for doc in conversation.documents:
+        if DocumentMetadataKeysEnum.SEC_DOCUMENT in doc.metadata_map:
+            # Get the tool with a consistent name format
+            tool = get_api_query_engine_tool(doc, callback_manager)
+            api_query_engine_tools.append(tool)
 
     quantitative_question_engine = SubQuestionQueryEngine.from_defaults(
         query_engine_tools=api_query_engine_tools,

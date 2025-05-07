@@ -80,8 +80,8 @@ def describe_financials(financials: StockFinancial) -> str:
 
 def get_tool_metadata_for_document(doc: DocumentSchema) -> ToolMetadata:
     doc_title = build_title_for_document(doc)
-    name = f"extract_json_from_sec_document[{doc_title}]"
-    description = f"Returns basic financial data extracted from the SEC filing document {doc_title}"
+    name = f"query_document_{str(doc.id)}"
+    description = f"Returns information from the document {doc_title}"
     return ToolMetadata(
         name=name,
         description=description,
