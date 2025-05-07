@@ -70,8 +70,12 @@ class ChatCallbackHandler(BaseCallbackHandler):
 
     def get_metadata_from_event(self, event_type: CBEventType, payload: Optional[Dict[str, Any]] = None, is_start_event: bool = False) -> SubProcessMetadataMap:
         metadata_map = {}
-        print(f"Event type: {event_type}")
         
+        # Safely handle None payload
+        if payload is None:
+            print(f"Payload is none", metadata_map)
+            return metadata_map
+            
         # Handle Response objects with source_nodes (for citations)
         if EventPayload.RESPONSE in payload:
             response = payload.get(EventPayload.RESPONSE)
@@ -118,8 +122,8 @@ class ChatCallbackHandler(BaseCallbackHandler):
                     "citations": []
                 }]
         
-        print(f"Here is the metadata map: {metadata_map}")
         return metadata_map
+
 
 
 
