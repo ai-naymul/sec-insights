@@ -146,18 +146,35 @@ const PageRenderer: React.FC<PageRenderer> = ({
       if (
         documentFocused &&
         pdfFocusState.citation?.pageNumber === pageNumber + 1 &&
-        !isHighlighted
+        !isHighlighted && 
+        pdfFocusState.citation // Add this extra check
       ) {
-        multiHighlight(
+        console.log("Attempting highlight on page:", pageNumber);
+        const highlighted = multiHighlight(
           pdfFocusState.citation.snippet,
           pageNumber,
           pdfFocusState.citation.color
         );
-        setIsHighlighted(true);
+        
+        if (highlighted) {
+          setIsHighlighted(true);
+        } else {
+          // Retry if highlighting fails
+          setTimeout(() => {
+            if (!isHighlighted && pdfFocusState.citation) { // Also check here
+              multiHighlight(
+                pdfFocusState.citation.snippet,
+                pageNumber,
+                pdfFocusState.citation.color
+              );
+              setIsHighlighted(true);
+            }
+          }, 1000);
+        }
       }
-    }, 50),
-    [pdfFocusState.citation?.snippet, pageNumber, isHighlighted]
-  );
+    }, 300),
+    [pdfFocusState.citation?.snippet, pageNumber, documentFocused, isHighlighted]
+  );  
 
   return (
     <div
