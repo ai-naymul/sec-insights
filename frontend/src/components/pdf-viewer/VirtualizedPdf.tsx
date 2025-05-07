@@ -141,13 +141,14 @@ const PageRenderer: React.FC<PageRenderer> = ({
     maybeHighlight();
   }, [documentFocused, inView]);
 
+  // In VirtualizedPdf.tsx
   const maybeHighlight = useCallback(
     debounce(() => {
       if (
         documentFocused &&
         pdfFocusState.citation?.pageNumber === pageNumber + 1 &&
         !isHighlighted && 
-        pdfFocusState.citation // Add this extra check
+        pdfFocusState.citation
       ) {
         console.log("Attempting highlight on page:", pageNumber);
         const highlighted = multiHighlight(
@@ -161,20 +162,21 @@ const PageRenderer: React.FC<PageRenderer> = ({
         } else {
           // Retry if highlighting fails
           setTimeout(() => {
-            if (!isHighlighted && pdfFocusState.citation) { // Also check here
-              multiHighlight(
+            if (!isHighlighted && pdfFocusState.citation) {
+              const retryHighlight = multiHighlight(
                 pdfFocusState.citation.snippet,
                 pageNumber,
                 pdfFocusState.citation.color
               );
-              setIsHighlighted(true);
+              setIsHighlighted(!!retryHighlight);
             }
           }, 1000);
         }
       }
-    }, 300),
+    }, 300), // Increased from 50ms to 300ms for better reliability
     [pdfFocusState.citation?.snippet, pageNumber, documentFocused, isHighlighted]
-  );  
+  );
+  
 
   return (
     <div
