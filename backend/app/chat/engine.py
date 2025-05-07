@@ -29,6 +29,7 @@ from llama_index.core.vector_stores.types import (
     MetadataFilters,
     ExactMatchFilter,
 )
+from llama_index.core.query_engine import CitationQueryEngine
 from app.core.config import settings
 from app.schema import (
     Message as MessageSchema,
@@ -214,16 +215,34 @@ async def get_chat_engine(
         str(doc.id): doc for doc in conversation.documents
     }
 
-    vector_query_engine_tools = [
-        QueryEngineTool(
-            query_engine=index_to_query_engine(doc_id, index),
-            metadata=ToolMetadata(
-                name=doc_id,
-                description=build_description_for_document(id_to_doc[doc_id]),
-            ),
+    # Create citation-enabled query engine tools
+    vector_query_engine_tools = []
+    for doc_id, index in doc_id_to_index.items():
+        # Create a retriever with your filters
+        filters = MetadataFilters(
+            filters=[ExactMatchFilter(key=DB_DOC_ID_KEY, value=doc_id)]
         )
-        for doc_id, index in doc_id_to_index.items()
-    ]
+        # Create the retriever from the index first
+        retriever = index.as_retriever(
+            similarity_top_k=3, 
+            filters=filters
+        )
+
+        # Then manually construct the CitationQueryEngine
+        query_engine = CitationQueryEngine(
+            retriever=retriever,
+            citation_chunk_size=512
+        )
+        print(f"CITATION ENGINE CONFIG: similarity_top_k=3, citation_chunk_size=512")
+        vector_query_engine_tools.append(
+            QueryEngineTool(
+                query_engine=query_engine,
+                metadata=ToolMetadata(
+                    name=doc_id,
+                    description=build_description_for_document(id_to_doc[doc_id]),
+                ),
+            )
+        )
 
     response_synth = get_custom_response_synth(callback_manager, conversation.documents)
 
@@ -297,5 +316,5 @@ Any questions about company-related financials or other metrics should be asked 
         callback_manager=callback_manager,
         max_function_calls=3,
     )
-
+    print(f"Chat engine created. {chat_engine}")
     return chat_engine

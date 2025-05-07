@@ -149,10 +149,11 @@ def get_api_query_engine_tool(
     polygon_io_tool = get_polygon_io_sec_tool(document)
     tool_metadata = get_tool_metadata_for_document(document)
     doc_title = build_title_for_document(document)
-    llm = Settings.llm.model_copy(
-        update={"callback_manager": callback_manager},
-        deep=True
-    )
+    llm_settings = Settings.llm.model_dump()
+    if "callback_manager" in llm_settings:
+        del llm_settings["callback_manager"]
+    llm = Settings.llm.__class__(**llm_settings)
+    llm.callback_manager = callback_manager
     agent = OpenAIAgent.from_tools(
         [polygon_io_tool],
         llm=llm,

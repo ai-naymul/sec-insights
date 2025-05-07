@@ -70,28 +70,57 @@ class ChatCallbackHandler(BaseCallbackHandler):
 
     def get_metadata_from_event(self, event_type: CBEventType, payload: Optional[Dict[str, Any]] = None, is_start_event: bool = False) -> SubProcessMetadataMap:
         metadata_map = {}
-        print(event_type)
+        print(f"Event type: {event_type}")
         
-        # Check for FUNCTION_CALL with function_call_response payload
-        if (event_type == CBEventType.FUNCTION_CALL and 
+        # Handle Response objects with source_nodes (for citations)
+        if EventPayload.RESPONSE in payload:
+            response = payload.get(EventPayload.RESPONSE)
+            
+            # Check if response is a Response object with source_nodes
+            if hasattr(response, 'source_nodes') and hasattr(response, 'response'):
+                citations = []
+                for node in response.source_nodes:
+                    if hasattr(node, 'node') and hasattr(node.node, 'metadata'):
+                        metadata = node.node.metadata
+                        if 'db_document_id' in metadata and 'page_label' in metadata:
+                            try:
+                                citation = {
+                                    "document_id": metadata['db_document_id'],
+                                    "page_number": int(metadata['page_label']),
+                                    "text": node.node.text[:200] if hasattr(node.node, 'text') else ""
+                                }
+                                citations.append(citation)
+                            except (ValueError, TypeError):
+                                pass
+                
+                # Add citations to metadata
+                if citations:
+                    metadata_map["sub_questions"] = [{
+                        "question": "What are the main business focus areas?",
+                        "answer": str(response.response),
+                        "citations": citations
+                    }]
+        
+        # Handle existing event types
+        elif (event_type == CBEventType.SUB_QUESTION and 
+            EventPayload.SUB_QUESTION in payload):
+            sub_q = payload[EventPayload.SUB_QUESTION]
+            metadata_map[SubProcessMetadataKeysEnum.SUB_QUESTION.value] = schema.QuestionAnswerPair.from_sub_question_answer_pair(sub_q).dict()
+        
+        # Handle FUNCTION_CALL events
+        elif (event_type == CBEventType.FUNCTION_CALL and 
             EventPayload.FUNCTION_OUTPUT in payload):
             response_str = payload.get(EventPayload.FUNCTION_OUTPUT)
             if isinstance(response_str, str):
-                # Create sub_question structure that matches frontend expectations
                 metadata_map["sub_questions"] = [{
                     "question": "What are the main business focus areas?",
                     "answer": response_str,
                     "citations": []
                 }]
         
-        # Also handle standard SUB_QUESTION events
-        elif (event_type == CBEventType.SUB_QUESTION and 
-            EventPayload.SUB_QUESTION in payload):
-            sub_q = payload[EventPayload.SUB_QUESTION]
-            metadata_map[SubProcessMetadataKeysEnum.SUB_QUESTION.value] = schema.QuestionAnswerPair.from_sub_question_answer_pair(sub_q).dict()
-        
         print(f"Here is the metadata map: {metadata_map}")
         return metadata_map
+
 
 
 
