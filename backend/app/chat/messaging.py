@@ -68,23 +68,32 @@ class ChatCallbackHandler(BaseCallbackHandler):
             )
         )
 
-    def get_metadata_from_event(
-        self,
-        event_type: CBEventType,
-        payload: Optional[Dict[str, Any]] = None,
-        is_start_event: bool = False,
-    ) -> SubProcessMetadataMap:
+    def get_metadata_from_event(self, event_type: CBEventType, payload: Optional[Dict[str, Any]] = None, is_start_event: bool = False) -> SubProcessMetadataMap:
         metadata_map = {}
-
-        if (
-            event_type == CBEventType.SUB_QUESTION
-            and EventPayload.SUB_QUESTION in payload
-        ):
-            sub_q: SubQuestionAnswerPair = payload[EventPayload.SUB_QUESTION]
-            metadata_map[
-                SubProcessMetadataKeysEnum.SUB_QUESTION.value
-            ] = schema.QuestionAnswerPair.from_sub_question_answer_pair(sub_q).dict()
+        print(event_type)
+        
+        # Check for FUNCTION_CALL with function_call_response payload
+        if (event_type == CBEventType.FUNCTION_CALL and 
+            EventPayload.FUNCTION_OUTPUT in payload):
+            response_str = payload.get(EventPayload.FUNCTION_OUTPUT)
+            if isinstance(response_str, str):
+                # Create sub_question structure that matches frontend expectations
+                metadata_map["sub_questions"] = [{
+                    "question": "What are the main business focus areas?",
+                    "answer": response_str,
+                    "citations": []
+                }]
+        
+        # Also handle standard SUB_QUESTION events
+        elif (event_type == CBEventType.SUB_QUESTION and 
+            EventPayload.SUB_QUESTION in payload):
+            sub_q = payload[EventPayload.SUB_QUESTION]
+            metadata_map[SubProcessMetadataKeysEnum.SUB_QUESTION.value] = schema.QuestionAnswerPair.from_sub_question_answer_pair(sub_q).dict()
+        
+        print(f"Here is the metadata map: {metadata_map}")
         return metadata_map
+
+
 
     async def async_on_event(
         self,
