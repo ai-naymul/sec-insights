@@ -70,14 +70,22 @@ const SubProcessDisplay: React.FC<SubProcessDisplayProps> = ({
   showSpinner = true,
 }) => {
   const subQuestions: SubQuestionItem[] = [];
+  
   subProcesses?.forEach((subProcess, subProcessIndex) => {
+    console.log(`SubProcess #${subProcessIndex}:`, {
+      source: subProcess.source,
+      content: subProcess.content?.substring(0, 100) // Show first 100 chars
+    });
+    // Check for sub_question property (single question)
     if (subProcess.metadata_map?.sub_question) {
       subQuestions.push({
         subQuestion: subProcess.metadata_map?.sub_question,
         subProcessIndex,
         subQuestionIndex: subQuestions.length,
       });
-    } else if (subProcess.metadata_map?.sub_questions) {
+    } 
+    // Check for sub_questions array property (multiple questions)
+    else if (subProcess.metadata_map?.sub_questions) {
       subProcess.metadata_map?.sub_questions.forEach((subQuestion) => {
         subQuestions.push({
           subQuestion,
@@ -85,6 +93,53 @@ const SubProcessDisplay: React.FC<SubProcessDisplayProps> = ({
           subQuestionIndex: subQuestions.length,
         });
       });
+    }
+    // For qualitative questions, check specific sources like 'synthesize' or 'retrieve'
+    else if (
+      subProcess.content && 
+      (String(subProcess.source).toLowerCase().includes('synthesize') || 
+      String(subProcess.source).toLowerCase().includes('sub_question') || 
+      String(subProcess.source).toLowerCase().includes('retrieve') ||
+      String(subProcess.source).toLowerCase().includes('qualitative'))
+    ) {
+      const contentStr = subProcess.content.toString();
+      
+      // First look for the Q: and A: pattern
+      const questionMatch = contentStr.match(/\[[^\]]+\]\s*Q:\s*([\s\S]*?)(?=\n|\[[^\]]+\]\s*A:|$)/) || contentStr.match(/Q:\s*([\s\S]*?)(?=\n|A:|$)/);
+      const answerMatch = contentStr.match(/\[[^\]]+\]\s*A:\s*([\s\S]*?)(?=\n|\[[^\]]+\]\s*Q:|$)/) || contentStr.match(/A:\s*([\s\S]*?)(?=\n|Q:|$)/);
+
+      console.log("Question match:", questionMatch);
+      console.log("Answer match:", answerMatch);
+      if (questionMatch && questionMatch[1] && answerMatch && answerMatch[1]) {
+        subQuestions.push({
+          subQuestion: {
+            question: questionMatch[1].trim() || "",
+            answer: answerMatch[1].trim() || "",
+            citations: [] // No citations in this case
+          },
+          subProcessIndex,
+          subQuestionIndex: subQuestions.length,
+        });
+      }
+      // If no Q/A pattern, check if this is just a simple question/answer pair
+      else if (contentStr.includes("?")) {
+        // Extract question (text up to the question mark plus the question mark)
+        const questionText = `${String(contentStr.split("?")[0])}?`;
+        // Extract answer (everything after the question mark)
+        const answerText = contentStr.substring(questionText.length).trim();
+        
+        if (questionText && questionText.length > 10 && answerText && answerText.length > 10) {
+          subQuestions.push({
+            subQuestion: {
+              question: questionText || "",
+              answer: answerText || "",
+              citations: [] // No citations in this case
+            },
+            subProcessIndex,
+            subQuestionIndex: subQuestions.length,
+          });
+        }
+      }
     }
   });
 
