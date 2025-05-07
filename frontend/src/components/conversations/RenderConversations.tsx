@@ -169,7 +169,7 @@ const SubProcessDisplay: React.FC<SubProcessDisplayProps> = ({
                 >
                   <div>
                     {subQuestions.map(({subQuestion, subQuestionIndex, subProcessIndex}) => {
-                      const hasCitations = !!subQuestion.citations;
+                      const hasCitations = subQuestion.citations && subQuestion.citations.length > 0;
                       return (
                         <div
                           key={`${messageId}-${subProcessIndex}-${subQuestionIndex}`}
