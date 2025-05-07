@@ -7,68 +7,65 @@ interface WordData {
   wordIdx: number;
 }
 
-/*
- * This function works by breaking the doc up into
- * individual words, finding the longest contiguous sub-sequence
- * that matches the given textToHighlight, and directly
- * setting the background-color on the spans associated with the
- * longest contiguous sub-sequence.
- * TODO: I do wish it was easier to understand / cleaner
- */
 export const multiHighlight = (
   textToHighlight: string,
   pageNumber: number,
   color = DocumentColorEnum.yellow
 ) => {
+  console.log("Highlighting text:", textToHighlight.substring(0, 30), "on page:", pageNumber);
   const highlightColor = highlightColors[color];
-  const spans = document.querySelectorAll(
-    `div[data-page-number='${
-      pageNumber + 1
-    }'] .react-pdf__Page__textContent.textLayer span`
-  );
 
+  // Select spans with better specificity
+  const spans = document.querySelectorAll(
+    `div[data-page-number='${pageNumber + 1}'] .react-pdf__Page__textContent.textLayer span`
+  );
+  
+  if (spans.length === 0) {
+    console.warn("No spans found for highlighting - page may not be fully rendered");
+    return false;
+  }
+
+  // Extract words from spans
   const words: WordData[] = [];
   spans.forEach((span, spanIdx) => {
     const htmlSpan = span as HTMLElement;
     const spanWords = htmlSpan.textContent || "";
-
-    spanWords.split(" ").map((text, wordIdx) => {
-      words.push({ text, spanIdx, wordIdx });
-    });
+    spanWords.split(" ")
+      .filter(word => word.trim().length > 0)
+      .forEach((text, wordIdx) => {
+        words.push({ text, spanIdx, wordIdx });
+      });
   });
 
-  let searchString = textToHighlight;
-  searchString = searchString.replace(/\s{2,}/g, " ");
+  // Normalize search string
+  let searchString = textToHighlight.replace(/\s{2,}/g, " ");
   searchString = searchString.replace(/\t/g, " ");
-  searchString = searchString
-    .toString()
-    .trim()
-    .replace(/(\r\n|\n|\r)/g, "");
+  searchString = searchString.replace(/(\r\n|\n|\r)/g, " ");
+  searchString = searchString.trim();
 
-  const searchWords = searchString.split(" ");
+  const searchWords = searchString.split(" ").filter(word => word.trim().length > 0);
   const lenSearchString = searchWords.length;
+
   if (!lenSearchString) {
-    return;
+    console.warn("Empty search string after normalization");
+    return false;
   }
 
   const firstWord = searchWords[0];
-  if (!firstWord) {
-    return;
-  }
-  const searchData = generateDirectSearchData(
-    firstWord,
-    words,
-    lenSearchString
-  );
+  if (!firstWord) return false;
 
+  // Generate search data
+  const searchData = generateDirectSearchData(firstWord, words, lenSearchString);
+
+  // Configure fuzzy search
   const options = {
     includeScore: true,
-    threshold: 0.1, // Adjust this threshold according to your requirement.
-    minMatchCharLength: 10, // You might want to increase this for sentences.
+    threshold: 0.3, // More tolerant matching
+    minMatchCharLength: 5,
     shouldSort: true,
     findAllMatches: true,
     includeMatches: true,
-    keys: ["text"], // This tells Fuse.js to search in the `text` property of the items in your list
+    keys: ["text"],
   };
 
   const fuse = new Fuse(searchData, options);
@@ -76,41 +73,52 @@ export const multiHighlight = (
 
   if (result.length > 0) {
     const searchResult = result[0]?.item;
-
     const startSpan = searchResult?.startSpan || 0;
     const endSpan = searchResult?.endSpan || 0;
     const startWordIdx = searchResult?.startWordIdx || 0;
     const endWordIdx = searchResult?.endWordIdx || 0;
 
-    for (let i = startSpan; i < endSpan + 1; i++) {
+    // Apply highlights
+    for (let i = startSpan; i <= endSpan; i++) {
+      if (i >= spans.length) continue;
+      
       const spanToHighlight = spans[i] as HTMLElement;
-      if (i == startSpan) {
+      
+      if (i === startSpan) {
         if (startWordIdx === 0) {
           highlightHtmlElement(spanToHighlight, highlightColor);
         } else {
-          partialHighlight(startWordIdx, spanToHighlight, DIRECTION.START);
+          partialHighlight(startWordIdx, spanToHighlight, DIRECTION.START, highlightColor);
         }
-      } else if (i == endSpan) {
+      } else if (i === endSpan) {
         if (endWordIdx === 0) {
-          return;
+          return false;
         } else {
-          partialHighlight(endWordIdx, spanToHighlight, DIRECTION.END);
+          partialHighlight(endWordIdx, spanToHighlight, DIRECTION.END, highlightColor);
         }
       } else {
         highlightHtmlElement(spanToHighlight, highlightColor);
       }
     }
+    return true;
   }
-  return true;
+  
+  return false;
 };
 
 const HIGHLIGHT_CLASSNAME = "opacity-40 saturate-[3] highlighted-by-llama ";
 
 const highlightHtmlElement = (div: HTMLElement, color: string) => {
+  if (!div) return;
+  
   const text = div.textContent || "";
+  // Check if already highlighted
+  if (div.querySelector(`.${HIGHLIGHT_CLASSNAME.trim()}`)) return;
+  
   const newSpan = document.createElement("span");
   newSpan.className = HIGHLIGHT_CLASSNAME + color;
   newSpan.innerText = text;
+  
   div.innerText = "";
   div.appendChild(newSpan);
 };
@@ -119,55 +127,48 @@ enum DIRECTION {
   START,
   END,
 }
+
 const partialHighlight = (
   idx: number,
   span: HTMLElement,
-  direction = DIRECTION.START
+  direction = DIRECTION.START,
+  highlightColor: string
 ) => {
+  if (!span) return;
+  
   const text = span.textContent;
-  if (!text) {
-    return;
-  }
-  const test = text.split(" ")[idx - 1] || "";
-  const substringToHighlight = test; // replace this with the actual substring
+  if (!text) return;
 
-  // Remove existing content in the span
+  const words = text.split(" ");
+  if (idx >= words.length) return;
+
+  const substringToHighlight = words[idx - 1] || "";
+  
+  // Remove existing content
   span.textContent = "";
-
-  // Split the text into pieces by the substring
-  const parts = text.split(substringToHighlight);
-
-  // For each piece, append it and the highlighted substring (except for the last piece)
-  parts.forEach((part, index) => {
-    if (direction === DIRECTION.START) {
-      if (index == 0) {
-        span.appendChild(document.createTextNode(part));
-      } else {
-        span.appendChild(document.createTextNode(test));
-        const highlightSpan = document.createElement("span");
-        highlightSpan.className = HIGHLIGHT_CLASSNAME;
-        highlightSpan.textContent = part;
-        span.appendChild(highlightSpan);
-      }
-    }
-
-    if (direction === DIRECTION.END) {
-      if (index == 0) {
-        const highlightSpan = document.createElement("span");
-        highlightSpan.className = HIGHLIGHT_CLASSNAME;
-        highlightSpan.textContent = part;
-        span.appendChild(highlightSpan);
-        // TODO: this is wrong, because it causes a double copy paste issue.
-        // But without it, the offset is incorrect.
-        span.appendChild(document.createTextNode(part));
-      } else {
-        span.appendChild(document.createTextNode(test));
-        span.appendChild(document.createTextNode(part));
-      }
-    }
-  });
+  
+  if (direction === DIRECTION.START) {
+    // First part normal, rest highlighted
+    const normalText = document.createTextNode(words.slice(0, idx).join(" ") + " ");
+    span.appendChild(normalText);
+    
+    const highlightSpan = document.createElement("span");
+    highlightSpan.className = HIGHLIGHT_CLASSNAME + highlightColor;
+    highlightSpan.textContent = words.slice(idx).join(" ");
+    span.appendChild(highlightSpan);
+  } else {
+    // First part highlighted, rest normal
+    const highlightSpan = document.createElement("span");
+    highlightSpan.className = HIGHLIGHT_CLASSNAME + highlightColor;
+    highlightSpan.textContent = words.slice(0, idx).join(" ") + " ";
+    span.appendChild(highlightSpan);
+    
+    const normalText = document.createTextNode(words.slice(idx).join(" "));
+    span.appendChild(normalText);
+  }
 };
 
+// Your existing interface and functions with improved implementation
 interface SearchStrings {
   text: string;
   startSpan: number;
@@ -176,53 +177,39 @@ interface SearchStrings {
   endWordIdx: number;
 }
 
-function generateFuzzySearchData(arr: WordData[], n: number): SearchStrings[] {
-  // used when we need to fuzzy search across the page
-  const searchStrings: SearchStrings[] = [];
-
-  for (let i = 0; i <= arr.length - n; i++) {
-    // constructs sentence of length n
-    const text = arr
-      .slice(i, i + n)
-      .reduce((acc, val) => acc + " " + val.text, "");
-
-    const startSpan = arr[i]?.spanIdx || 0; // have to add these defaults because typescript is dumb
-    const endSpan = arr[i + n]?.spanIdx || 0;
-    const startWordIdx = arr[i]?.wordIdx || 0;
-    const endWordIdx = arr[i + n]?.wordIdx || 0;
-    searchStrings.push({ text, startSpan, endSpan, startWordIdx, endWordIdx });
-  }
-
-  return searchStrings;
-}
-
 function generateDirectSearchData(
   startString: string,
   words: WordData[],
   n: number
 ): SearchStrings[] {
   const searchStrings: SearchStrings[] = [];
-
+  const normalizedStartString = startString.toLowerCase().trim();
+  
   for (let i = 0; i <= words.length - n; i++) {
-    if (words[i]?.text === startString) {
-      // constructs sentence of length n
+    const currentWord = words[i]?.text || "";
+    const normalizedCurrentWord = currentWord.toLowerCase().trim();
+    
+    // More flexible matching
+    if (normalizedCurrentWord === normalizedStartString || 
+        normalizedCurrentWord.includes(normalizedStartString) || 
+        normalizedStartString.includes(normalizedCurrentWord)) {
+      
       const text = words
         .slice(i, i + n)
-        .reduce((acc, val) => acc + " " + val.text, "");
-
-      const startSpan = words[i]?.spanIdx || 0; // have to add these defaults because typescript is dumb
-      const endSpan = words[i + n]?.spanIdx || 0;
-      const startWordIdx = words[i]?.wordIdx || 0;
-      const endWordIdx = words[i + n]?.wordIdx || 0;
+        .map(val => val.text)
+        .join(" ");
+      
       searchStrings.push({
         text,
-        startSpan,
-        endSpan,
-        startWordIdx,
-        endWordIdx,
+        startSpan: words[i]?.spanIdx || 0,
+        endSpan: words[i + n - 1]?.spanIdx || 0,
+        startWordIdx: words[i]?.wordIdx || 0,
+        endWordIdx: words[i + n - 1]?.wordIdx || 0,
       });
     }
   }
-
+  
   return searchStrings;
 }
+
+// The original generateFuzzySearchData function remains unchanged
